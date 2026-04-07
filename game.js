@@ -1,137 +1,65 @@
-// Game.js for a 2D platformer game
+// game.js
 
-// Variables
-let canvas, context;
-let player;
-let platforms = [];
-let enemies = [];
-let gravity = 0.5;
+// Get the canvas and context
+const canvas = document.getElementById('gameCanvas');
+const context = canvas.getContext('2d');
 
-// Initialize the game
-function init() {
-    canvas = document.getElementById('gameCanvas');
-    context = canvas.getContext('2d');
-    player = new Player();
-    createPlatforms();
-    createEnemies();
-    requestAnimationFrame(gameLoop);
+// Set initial canvas size
+resizeCanvas();
+
+// Player movement variables
+let playerX = canvas.width / 2;
+const playerSpeed = 5;
+
+// Keyboard controls
+function moveLeft() {
+    playerX -= playerSpeed;
+    draw();
 }
 
-// Game loop
-function gameLoop() {
-    update();
-    render();
-    requestAnimationFrame(gameLoop);
+function moveRight() {
+    playerX += playerSpeed;
+    draw();
 }
 
-// Update game state
-function update() {
-    player.update();
-    handleCollisions();
+// Event listeners for keyboard controls
+window.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowLeft') {
+        moveLeft();
+    } else if (event.key === 'ArrowRight') {
+        moveRight();
+    }
+});
+
+// Event listeners for mobile touch controls
+canvas.addEventListener('touchstart', (event) => {
+    const touchX = event.touches[0].clientX;
+    if (touchX < canvas.width / 2) {
+        moveLeft();
+    } else {
+        moveRight();
+    }
+});
+
+canvas.addEventListener('touchmove', (event) => {
+    event.preventDefault();
+});
+
+// Resize canvas to fit window
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
 
-// Render the game
-function render() {
+// Redraw function
+function draw() {
     context.clearRect(0, 0, canvas.width, canvas.height);
-    player.render();
-    platforms.forEach(platform => platform.render());
-    enemies.forEach(enemy => enemy.render());
+    context.fillStyle = 'blue';
+    context.fillRect(playerX, canvas.height - 50, 50, 50);
 }
 
-// Player class
-class Player {
-    constructor() {
-        this.x = 50;
-        this.y = 0;
-        this.width = 50;
-        this.height = 50;
-        this.velocityY = 0;
-        this.jumping = false;
-    }
+// Handle window resize
+window.addEventListener('resize', resizeCanvas);
 
-    update() {
-        this.velocityY += gravity;
-        this.y += this.velocityY;
-
-        if (this.y + this.height > canvas.height) {
-            this.y = canvas.height - this.height;
-            this.velocityY = 0;
-            this.jumping = false;
-        }
-    }
-
-    jump() {
-        if (!this.jumping) {
-            this.velocityY = -10;
-            this.jumping = true;
-        }
-    }
-
-    render() {
-        context.fillStyle = 'blue';
-        context.fillRect(this.x, this.y, this.width, this.height);
-    }
-}
-
-// Create platforms
-function createPlatforms() {
-    platforms.push(new Platform(100, 300, 200, 20));
-    platforms.push(new Platform(400, 200, 200, 20));
-}
-
-// Platform class
-class Platform {
-    constructor(x, y, width, height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-    }
-
-    render() {
-        context.fillStyle = 'green';
-        context.fillRect(this.x, this.y, this.width, this.height);
-    }
-}
-
-// Create enemies
-function createEnemies() {
-    enemies.push(new Enemy(300, 250));
-}
-
-// Enemy class
-class Enemy {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 30;
-        this.height = 30;
-        this.direction = 1;
-    }
-
-    update() {
-        this.x += this.direction;
-        if (this.x > canvas.width - this.width || this.x < 0) {
-            this.direction *= -1;
-        }
-    }
-
-    render() {
-        context.fillStyle = 'red';
-        context.fillRect(this.x, this.y, this.width, this.height);
-    }
-}
-
-// Handle collisions
-function handleCollisions() {
-    platforms.forEach(platform => {
-        if (player.y + player.height > platform.y && player.y < platform.y + platform.height && 
-            player.x < platform.x + platform.width && player.x + player.width > platform.x) {
-            player.y = platform.y - player.height;
-            player.velocityY = 0;
-            player.jumping = false;
-        }
-    });
-}
-
-init();
+// Initial draw
+draw();
