@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEON SURVIVOR: EVOLUTION</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; touch-action: none; position: fixed; width: 100%; height: 100%; }
+        canvas { display: block; background: #000; }
+        .ui { position: absolute; color: #00f2ff; pointer-events: none; z-index: 10; width: 100%; padding: 20px; box-sizing: border-box; }
+        #scoreUI { top: 0; left: 0; text-align: left; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #00f2ff; }
+        .overlay { position: absolute; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; }
+        .btn { padding: 15px 30px; background: rgba(0,242,255,0.1); border: 2px solid #00f2ff; color: #00f2ff; font-size: 1.2rem; cursor: pointer; border-radius: 5px; margin: 10px; text-transform: uppercase; pointer-events: auto; }
+        #leaderboard { margin-top: 15px; width: 250px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 5px; }
+        .score-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; color: #00ff88; }
+    </style>
+</head>
+<body>
+
+    <div id="scoreUI" class="ui">SCORE: 0</div>
+
+    <div id="startMenu" class="overlay">
+        <h1 style="color: #00f2ff;">NEON SURVIVOR</h1>
+        <p>Overleef de evolutie...</p>
+        <button class="btn" id="startBtn">START GAME</button>
+    </div>
+
+    <div id="retryMenu" class="overlay" style="display:none;">
+        <h1 style="color: #ff0055;">CORE FAILED</h1>
+        <h2 id="finalScore">SCORE: 0</h2>
+        <div id="leaderboard"><div id="scoreList"></div></div>
+        <button class="btn" id="retryBtn">RETRY</button>
+    </div>
+
+    <canvas id="g"></canvas>
+
+    <script>
+        const canvas = document.getElementById('g'), ctx = canvas.getContext('2d');
+        const scoreUI = document.getElementById('scoreUI'), startMenu = document.getElementById('startMenu'), retryMenu = document.getElementById('retryMenu'), scoreList = document.getElementById('scoreList');
+
+        let active = false, score = 0, lastShootTime = 0, spawnTimer;
+        let player = { x: 0, y: 0, r: 18, shield: false, multi: false, directions: 1, rapid: false };
+        let enemies = [], bullets = [], enemyBullets = [], items = [];
+
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; player.x = canvas.width/2; player.y = canvas.height/2; }
+        window.addEventListener('resize', resize); resize();
+
+        function handleTouch(e) { if(!active) return; e.preventDefault(); player.x = e.touches[0].clientX; player.y = e.touches[0].clientY; }
+        canvas.addEventListener('touchstart', handleTouch, {passive: false});
+        canvas.addEventListener('touchmove', handleTouch, {passive: false});
+
+        function initGame(e) {
+            if(e) e.preventDefault();
+            clearTimeout(spawnTimer);
+            enemies = []; bullets = []; enemyBullets = []; items = []; score = 0;
+            player = { ...player, shield: false, multi: false, directions: 1, rapid: false };
+            active = true; scoreUI.innerText = "SCORE: 0";
+            startMenu.style.display = 'none'; retryMenu.style.display = 'none';
+            spawnEnemy(); gameLoop();
+        }
+
+        document.getElementById('startBtn').addEventListener('touchend', initGame);
+        document.getElementById('retryBtn').addEventListener('touchend', initGame);
+
+        function spawnEnemy() {
+            if(!active) return;
+            const side = Math.floor(Math.random() * 4);
+            let x, y;
+            if(side===0){x=Math.random()*canvas.width; y=-50;}
+            else if(side===1){x=canvas.width+50; y=Math.random()*canvas.height;}
+            else if(side===2){x=Math.random()*canvas.width; y=canvas.height+50;}
+            else {x=-50; y=Math.random()*canvas.height;}
+            
+            let type = 'scout';
+            if(score > 120 && Math.random() < 0.15) type = 'phantom';
+            else if(score > 80 && Math.random() < 0.2) type = 'tank';
+            else if(score > 40 && Math.random() < 0.25) type = 'sniper';
+
+            enemies.push({ 
+                x, y, type, 
+                r: type === 'tank' ? 35 : 15, 
+                hp: type === 'tank' ? 5 : 1,
+                speed: (type === 'tank' ? 1 : type === 'phantom' ? 3 : 2.3) + (score/50),
+                lastShot: Date.now(),
+                visible: true,
+                alphaTick: 0
+            });
+            spawnTimer = setTimeout(spawnEnemy, Math.max(100, 1000 - (score * 8)));
+        }
+
+        function update() {
+            if(!active) return;
+            const now = Date.now();
+            
+            // Shooting
+            if(now - lastShootTime > (player.rapid ? 110 : 240)) {
+                const bSpd = 13;
+                const fire = (vx, vy) => bullets.push({x: player.x, y: player.y, vx, vy});
+                fire(0, -bSpd);
+                if(player.directions >= 2) fire(0, bSpd);
+                if(player.directions >= 3) { fire(-bSpd, 0); fire(bSpd, 0); }
+                lastShootTime = now;
+            }
+
+            // Enemies Logic
+            for(let i = enemies.length-1; i >= 0; i--) {
+                let en = enemies[i];
+                let dx = player.x - en.x, dy = player.y - en.y, dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Movement
+                if(en.type === 'sniper' && dist < 250) { /* Blijf op afstand */ }
+                else { en.x += (dx/dist) * en.speed; en.y += (dy/dist) * en.speed; }
+
+                // Sniper shooting
+                if(en.type === 'sniper' && now - en.lastShot > 2000) {
+                    enemyBullets.push({x: en.x, y: en.y, vx: (dx/dist)*6, vy: (dy/dist)*6});
+                    en.lastShot = now;
+                }
+
+                // Phantom visibility
+                if(en.type === 'phantom') {
+                    en.alphaTick += 0.05;
+                    en.visible = Math.sin(en.alphaTick) > 0;
+                }
+
+                if(dist < player.r + en.r && (en.type !== 'phantom' || en.visible)) {
+                    if(player.shield) { player.shield = false; enemies.splice(i,1); } else { gameOver(); }
+                }
+            }
+
+            // Bullet Logic
+            for(let i = bullets.length-1; i >= 0; i--) {
+                let b = bullets[i]; b.x += b.vx; b.y += b.vy;
+                if(b.x<0 || b.x>canvas.width || b.y<0 || b.y>canvas.height) { bullets.splice(i,1); continue; }
+                
+                for(let j = enemies.length-1; j >= 0; j--) {
+                    let en = enemies[j];
+                    if(en.type === 'phantom' && !en.visible) continue;
+                    if(Math.sqrt((b.x-en.x)**2 + (b.y-en.y)**2) < en.r + 10) {
+                        bullets.splice(i,1);
+                        en.hp--;
+                        if(en.hp <= 0) {
+                            if(en.type === 'tank') { // Split tank
+                                for(let k=0; k<3; k++) enemies.push({x: en.x+Math.random()*20, y: en.y+Math.random()*20, type:'scout', r:15, speed:3, hp:1});
+                            }
+                            enemies.splice(j,1); score++; scoreUI.innerText = "SCORE: " + score;
+                            if(Math.random() < 0.25) items.push({x: en.x, y: en.y, type: Math.random() < 0.3 ? 'DIR' : 'PWR'});
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Enemy bullets & Items cleanup
+            enemyBullets.forEach((eb, i) => {
+                eb.x += eb.vx; eb.y += eb.vy;
+                if(Math.sqrt((player.x-eb.x)**2 + (player.y-eb.y)**2) < player.r + 5) {
+                    player.shield ? (player.shield=false, enemyBullets.splice(i,1)) : gameOver();
+                }
+            });
+            items.forEach((p, i) => {
+                if(Math.sqrt((player.x-p.x)**2 + (player.y-p.y)**2) < player.r + 25) {
+                    if(p.type === 'DIR') player.directions = Math.min(3, player.directions + 1);
+                    else { let r = Math.random(); if(r<0.3) player.shield=true; else if(r<0.6){player.multi=true; setTimeout(()=>player.multi=false,6000);} else {player.rapid=true; setTimeout(()=>player.rapid=false,6000);}}
+                    items.splice(i,1);
+                }
+            });
+        }
+
+        function gameOver() { active = false; clearTimeout(spawnTimer); retryMenu.style.display = 'flex'; document.getElementById('finalScore').innerText = "SCORE: " + score; }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0,0,10,0.3)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if(!active) return;
+
+            // Player
+            ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff'; ctx.fillStyle = '#00f2ff';
+            if(player.shield) { ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 3; ctx.strokeRect(player.x-22, player.y-22, 44, 44); }
+            ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
+
+            // Enemies
+            enemies.forEach(en => {
+                if(en.type === 'phantom' && !en.visible) return;
+                ctx.shadowColor = en.type==='sniper'?'#ff0': en.type==='tank'?'#a0f': en.type==='phantom'?'#fff' : '#f05';
+                ctx.fillStyle = ctx.shadowColor;
+                ctx.fillRect(en.x-en.r/1.2, en.y-en.r/1.2, en.r*1.5, en.r*1.5);
+            });
+
+            ctx.shadowBlur=0; ctx.fillStyle='#f00'; enemyBullets.forEach(eb=> { ctx.beginPath(); ctx.arc(eb.x,eb.y,6,0,Math.PI*2); ctx.fill(); });
+            ctx.fillStyle='#0ff'; bullets.forEach(b=> ctx.fillRect(b.x-2,b.y-2,5,5));
+            ctx.fillStyle='#fff'; items.forEach(p=> ctx.fillRect(p.x-8,p.y-8,16,16));
+        }
+
+        function gameLoop() { if(active) { update(); draw(); requestAnimationFrame(gameLoop); } }
+    </script>
+</body>
+</html>
